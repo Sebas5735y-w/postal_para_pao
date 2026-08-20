@@ -1,0 +1,60 @@
+workflows:
+  postal-para-pao-android:
+    name: Postal para Pao - APK
+    max_build_duration: 30
+    instance_type: linux_x2
+    environment:
+      flutter: stable
+      vars:
+        PACKAGE_NAME: "com.sebas.postalparapao"
+        APP_LABEL: "Postal para Pao"
+    scripts:
+      - name: Generar carpeta android/ si no existe
+        script: |
+          # Este repo solo trae lib/ y pubspec.yaml (código puro de Flutter).
+          # Si falta la carpeta android/, la generamos aquí mismo con el
+          # Flutter de Codemagic, sin tocar lib/ ni pubspec.yaml.
+          if [ ! -d "android" ]; then
+            flutter create --platforms=android --org com.sebas .
+          fi
+
+      - name: Obtener dependencias
+        script: |
+          flutter pub get
+
+      - name: Generar ícono de la app
+        script: |
+          dart run flutter_launcher_icons
+
+      - name: Agregar permisos de notificaciones al AndroidManifest
+        script: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          for PERM in \
+            'android.permission.SCHEDULE_EXACT_ALARM' \
+            'android.permission.USE_EXACT_ALARM' \
+            'android.permission.RECEIVE_BOOT_COMPLETED' \
+            'android.permission.POST_NOTIFICATIONS'
+          do
+            if ! grep -q "$PERM" "$MANIFEST"; then
+              sed -i "0,/<application/s##<uses-permission android:name=\"$PERM\"/>\n\n    <application#" "$MANIFEST"
+            fi
+          done
+
+      - name: Poner el nombre bonito de la app
+        script: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          sed -i "s/android:label=\"[^\"]*\"/android:label=\"$APP_LABEL\"/" "$MANIFEST"
+
+      - name: Compilar APK release
+        script: |
+          flutter build apk --release
+
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+
+    publishing:
+      email:
+        recipients: []
+        notify:
+          success: true
+          failure: true
