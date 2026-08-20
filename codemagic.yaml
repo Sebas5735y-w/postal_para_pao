@@ -6,29 +6,53 @@ workflows:
     environment:
       flutter: stable
       vars:
-        PACKAGE_NAME: "com.sebas.postalparapao"
         APP_LABEL: "Postal para Pao"
     scripts:
-      - name: Generar carpeta android/ si no existe
+      - name: Generar carpeta android/ (si no existe)
         script: |
-          # Este repo solo trae lib/ y pubspec.yaml (código puro de Flutter).
-          # Si falta la carpeta android/, la generamos aquí mismo con el
-          # Flutter de Codemagic, sin tocar lib/ ni pubspec.yaml.
-          if [ ! -d "android" ]; then
-            flutter create --platforms=android --org com.sebas .
+          set -e
+          set -x
+          echo "Directorio actual:"
+          pwd
+          ls -la
+
+          if [ -d "android" ]; then
+            echo "La carpeta android/ ya existe, no hace falta crearla."
+          else
+            echo "No existe android/, la generamos con flutter create..."
+            flutter create --platforms=android --org com.sebas --project-name postal_para_pao .
           fi
+
+          # Verificación explícita: si después de esto sigue sin existir,
+          # cortamos aquí con un mensaje claro en vez de seguir y fallar
+          # más adelante de forma confusa.
+          if [ ! -d "android" ]; then
+            echo "ERROR: no se pudo crear la carpeta android/. Revisa el log de arriba."
+            exit 1
+          fi
+          echo "OK: android/ está lista."
+          ls -la android
 
       - name: Obtener dependencias
         script: |
+          set -e
           flutter pub get
 
       - name: Generar ícono de la app
         script: |
+          set -e
           dart run flutter_launcher_icons
 
-      - name: Agregar permisos de notificaciones al AndroidManifest
+      - name: Ajustar AndroidManifest (permisos + nombre de la app)
         script: |
+          set -e
           MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          if [ ! -f "$MANIFEST" ]; then
+            echo "ERROR: no existe $MANIFEST. La carpeta android/ no se generó bien."
+            exit 1
+          fi
+
           for PERM in \
             'android.permission.SCHEDULE_EXACT_ALARM' \
             'android.permission.USE_EXACT_ALARM' \
@@ -40,13 +64,14 @@ workflows:
             fi
           done
 
-      - name: Poner el nombre bonito de la app
-        script: |
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
           sed -i "s/android:label=\"[^\"]*\"/android:label=\"$APP_LABEL\"/" "$MANIFEST"
+
+          echo "Manifest final:"
+          cat "$MANIFEST"
 
       - name: Compilar APK release
         script: |
+          set -e
           flutter build apk --release
 
     artifacts:
